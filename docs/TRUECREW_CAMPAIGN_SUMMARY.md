@@ -20,6 +20,6 @@ The endpoint returns `503` when website scope is missing or invalid. It also ret
 
 ## Privacy and resource bounds
 
-The response contains aggregate metrics only. Source and medium are normalized to governed categories, free-form UTM content is not returned, path values are normalized and bucketed to known route classes, low-cardinality dimension groups are suppressed, and every returned breakdown has a fixed top-N limit. Raw session identifiers, visitor identifiers, contact data, free-form UTM values, and raw paths are not returned.
+The response contains aggregate metrics only. It may include counts for the fixed governed True Crew target-event allowlist; arbitrary event names are never exposed. Source and medium are normalized to governed categories, free-form UTM content is not returned, path values are normalized and bucketed to known route classes, low-cardinality dimension groups are suppressed, and every returned breakdown has a fixed top-N limit. Raw session identifiers, visitor identifiers, contact data, free-form UTM values, and raw paths are not returned.
 
 Responses require the bearer token and use `Cache-Control: private, no-store`.

@@ -8,9 +8,17 @@ export const dynamic = 'force-dynamic';
 const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 const CAMPAIGN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
+const TARGET_EVENT_NAMES = [
+  'high_intent_touchpoint',
+  'icp_conversation',
+  'job_control_audit_start',
+  'job_control_audit_complete',
+  'job_control_report_delivered',
+  'teardown_confirmed',
+  'qualified_coatops_walkthrough',
+] as const;
 const RFC3339_RE =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{3}))?(Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/;
-const DEFAULT_HOSTNAME = 'www.truecrewllc.com';
 
 function authorized(request: Request) {
   const expected = process.env.TRUECREW_ANALYTICS_READ_TOKEN ?? '';
@@ -56,10 +64,9 @@ function parseWindow(url: URL) {
 
 function readScope() {
   const websiteId = process.env.TRUECREW_ANALYTICS_WEBSITE_ID?.trim() ?? '';
-  const hostname = (process.env.TRUECREW_ANALYTICS_SITE_HOSTNAME?.trim() || DEFAULT_HOSTNAME)
-    .toLowerCase()
-    .replace(/\.$/, '');
-  if (!validateUuid(websiteId) || !HOSTNAME_RE.test(hostname)) return null;
+  const hostname =
+    process.env.TRUECREW_ANALYTICS_SITE_HOSTNAME?.trim().toLowerCase().replace(/\.$/, '') ?? '';
+  if (!validateUuid(websiteId) || !hostname || !HOSTNAME_RE.test(hostname)) return null;
   return { websiteId, hostname };
 }
 
@@ -107,7 +114,7 @@ export async function GET(request: Request) {
         and coalesce(we.utm_campaign, '') <> ''
         and we.created_at >= ${scanStart}
         and we.created_at < ${window.end}
-      order by we.session_id, we.created_at asc
+      order by we.session_id, we.created_at asc, we.event_id asc
     ), campaign_touch as (
       select *
       from first_campaign_touch
@@ -116,10 +123,10 @@ export async function GET(request: Request) {
         and first_touch_at < ${window.end}
     ), session_events as (
       select
-        e.*,
-        t.utm_source as first_source,
-        t.utm_medium as first_medium,
-        t.first_touch_at
+        e.session_id,
+        e.event_type,
+        e.event_name,
+        e.url_path
       from website_event e
       join campaign_touch t
         on t.website_id = e.website_id
@@ -140,6 +147,12 @@ export async function GET(request: Request) {
         count(*) filter (where event_type = 2 and event_name = 'demo_form_submit')::int as demo_form_submits,
         count(*) filter (where event_type = 2 and event_name = 'demo_form_success')::int as demo_form_successes
       from session_events
+    ), target_event_counts as (
+      select event_name, count(*)::int as count
+      from session_events
+      where event_type = 2
+        and event_name = any(${TARGET_EVENT_NAMES}::text[])
+      group by event_name
     ), source_groups as (
       select
         case
@@ -186,6 +199,7 @@ export async function GET(request: Request) {
     )
     select json_build_object(
       'totals', (select row_to_json(totals) from totals),
+      'target_events', coalesce((select json_object_agg(event_name, count) from target_event_counts), '{}'::json),
       'sources', coalesce((select json_agg(source_groups) from source_groups), '[]'::json),
       'paths', coalesce((select json_agg(path_groups) from path_groups), '[]'::json)
     ) as summary;
