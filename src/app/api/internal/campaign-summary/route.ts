@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
+import { startOfDay, startOfMonth, startOfWeek } from 'date-fns';
+import { validate as validateUuid } from 'uuid';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
-const CAMPAIGN_RE = /^[a-z0-9][a-z0-9_-]{0,79}$/;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CAMPAIGN_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
 const RFC3339_RE =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.(\d{3}))?(Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/;
@@ -44,7 +45,7 @@ function parseTimestamp(raw: string | null) {
 }
 
 function parseWindow(url: URL) {
-  const campaign = url.searchParams.get('campaign')?.trim().toLowerCase() ?? '';
+  const campaign = url.searchParams.get('campaign')?.trim() ?? '';
   const start = parseTimestamp(url.searchParams.get('start'));
   const end = parseTimestamp(url.searchParams.get('end'));
   if (!CAMPAIGN_RE.test(campaign) || !start || !end) return null;
@@ -58,8 +59,15 @@ function readScope() {
   const hostname = (process.env.TRUECREW_ANALYTICS_SITE_HOSTNAME?.trim() || DEFAULT_HOSTNAME)
     .toLowerCase()
     .replace(/\.$/, '');
-  if (!UUID_RE.test(websiteId) || !HOSTNAME_RE.test(hostname)) return null;
+  if (!validateUuid(websiteId) || !HOSTNAME_RE.test(hostname)) return null;
   return { websiteId, hostname };
+}
+
+function firstTouchScanStart(start: Date) {
+  const rotation = process.env.SALT_ROTATION || 'month';
+  if (rotation === 'day') return startOfDay(start);
+  if (rotation === 'week') return startOfWeek(start);
+  return startOfMonth(start);
 }
 
 export async function GET(request: Request) {
@@ -83,6 +91,7 @@ export async function GET(request: Request) {
     );
   }
 
+  const scanStart = firstTouchScanStart(window.start);
   const rows = await prisma.client.$queryRaw<Array<Record<string, unknown>>>`
     with first_campaign_touch as (
       select distinct on (we.session_id)
@@ -91,12 +100,12 @@ export async function GET(request: Request) {
         we.utm_source,
         we.utm_medium,
         we.utm_campaign,
-        we.utm_content,
         we.created_at as first_touch_at
       from website_event we
       where we.website_id = ${scope.websiteId}::uuid
         and lower(trim(trailing '.' from we.hostname)) = ${scope.hostname}
         and coalesce(we.utm_campaign, '') <> ''
+        and we.created_at >= ${scanStart}
         and we.created_at < ${window.end}
       order by we.session_id, we.created_at asc
     ), campaign_touch as (
@@ -110,7 +119,6 @@ export async function GET(request: Request) {
         e.*,
         t.utm_source as first_source,
         t.utm_medium as first_medium,
-        t.utm_content as first_content,
         t.first_touch_at
       from website_event e
       join campaign_touch t
@@ -150,28 +158,27 @@ export async function GET(request: Request) {
       having count(*) >= 2
       order by sessions desc, source asc, medium asc
       limit 20
-    ), content_groups as (
+    ), normalized_pageviews as (
       select
-        ('content-' || left(md5(coalesce(utm_content, 'unknown')), 12)) as content,
-        count(*)::int as sessions
-      from campaign_touch
-      group by 1
-      having count(*) >= 2
-      order by sessions desc, content asc
-      limit 20
+        session_id,
+        case
+          when split_part(coalesce(url_path, ''), '#', 1) in ('', '/') then '/'
+          else regexp_replace(split_part(url_path, '#', 1), '/+$', '')
+        end as normalized_path
+      from session_events
+      where event_type = 1
     ), path_groups as (
       select
         case
-          when url_path = '/' then '/'
-          when url_path = '/resources' then '/resources'
-          when url_path like '/resources/%' then '/resources/:resource'
-          when url_path in ('/coatops', '/products/coatops', '/request-demo', '/pricing', '/thank-you') then url_path
+          when normalized_path = '/' then '/'
+          when normalized_path = '/resources' then '/resources'
+          when normalized_path like '/resources/%' then '/resources/:resource'
+          when normalized_path in ('/coatops', '/products/coatops', '/request-demo', '/pricing', '/thank-you') then normalized_path
           else '/other'
         end as path,
         count(*)::int as pageviews,
         count(distinct session_id)::int as sessions
-      from session_events
-      where event_type = 1
+      from normalized_pageviews
       group by 1
       having count(distinct session_id) >= 2
       order by pageviews desc, path asc
@@ -180,12 +187,11 @@ export async function GET(request: Request) {
     select json_build_object(
       'totals', (select row_to_json(totals) from totals),
       'sources', coalesce((select json_agg(source_groups) from source_groups), '[]'::json),
-      'contents', coalesce((select json_agg(content_groups) from content_groups), '[]'::json),
       'paths', coalesce((select json_agg(path_groups) from path_groups), '[]'::json)
     ) as summary;
   `;
 
-  const summary = rows[0]?.summary ?? { totals: {}, sources: [], contents: [], paths: [] };
+  const summary = rows[0]?.summary ?? { totals: {}, sources: [], paths: [] };
   return Response.json(
     {
       campaign: window.campaign,

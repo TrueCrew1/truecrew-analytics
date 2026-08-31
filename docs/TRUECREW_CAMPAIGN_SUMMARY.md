@@ -12,7 +12,7 @@ The endpoint returns `503` when website scope is missing or invalid. It also ret
 
 ## Measurement semantics
 
-- Select the first campaign-bearing touch for each session before matching the requested campaign.
+- Select the first campaign-bearing touch for each session before matching the requested campaign, with the scan bounded to the session-salt period containing the requested start.
 - Include attributed events only from that first touch forward and only inside the requested end boundary.
 - Count page views with `event_type = 1` and custom events with `event_type = 2`.
 - Scope both campaign touches and attributed events to the configured website UUID and hostname.
@@ -20,6 +20,6 @@ The endpoint returns `503` when website scope is missing or invalid. It also ret
 
 ## Privacy and resource bounds
 
-The response contains aggregate metrics only. Source and medium are normalized to governed categories, content values are represented by opaque hashes, path values are bucketed to known route classes, low-cardinality dimension groups are suppressed, and every breakdown has a fixed top-N limit. Raw session identifiers, visitor identifiers, contact data, free-form UTM values, and raw paths are not returned.
+The response contains aggregate metrics only. Source and medium are normalized to governed categories, free-form UTM content is not returned, path values are normalized and bucketed to known route classes, low-cardinality dimension groups are suppressed, and every returned breakdown has a fixed top-N limit. Raw session identifiers, visitor identifiers, contact data, free-form UTM values, and raw paths are not returned.
 
 Responses require the bearer token and use `Cache-Control: private, no-store`.
