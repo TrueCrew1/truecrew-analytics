@@ -25,12 +25,13 @@ Treat as an upstream/reference analytics service. Runtime/provider/deployment ac
 
 ## AI execution contract
 
-1. Run `pnpm run ai:preflight` from the intended isolated worktree before material mutation.
-2. Treat `BLOCKED` as a stop condition. Never reset/stash/clean/rebase/discard unexpected state to make the preflight pass.
-3. When a packet supplies branch/base expectations, set `TRUECREW_EXPECTED_BRANCH`, `TRUECREW_EXPECTED_HEAD`, and `TRUECREW_TASK_PACKET`.
-4. `--allow-dirty` and `--allow-production-branch` are read-only/recovery snapshot controls only.
-5. Reference/experimental lifecycle is a real constraint: do not expand a reference or experiment into a product/runtime without explicit portfolio reclassification.
-6. Baseline validation: Use upstream-compatible checks required by the changed surface; do not represent an upstream/reference read as True Crew production health.
+1. Material mutation requires a current claimed Engineering Task Packet from True Crew HQ. If direct Notion access is unavailable, a trusted orchestrator must provide a current Notion-derived packet snapshot before work starts.
+2. Set `TRUECREW_TASK_PACKET` to the current packet identity and run `node scripts/ai-preflight.mjs` from the intended isolated worktree before material mutation.
+3. Treat a missing task packet or `BLOCKED` result as a stop condition. Never reset/stash/clean/rebase/discard unexpected state or substitute raw chat/model memory to make preflight pass.
+4. When the packet supplies branch/base expectations, set `TRUECREW_EXPECTED_BRANCH` and `TRUECREW_EXPECTED_HEAD` before preflight and reconcile the generated runtime context with the packet.
+5. `--allow-dirty` and `--allow-production-branch` are read-only/recovery snapshot controls only; they never authorize mutation.
+6. Reference/experimental lifecycle is a real constraint: do not expand a reference or experiment into a product/runtime without explicit portfolio reclassification.
+7. Baseline validation: Use upstream-compatible checks required by the changed surface; do not represent an upstream/reference read as True Crew production health.
 
 ## Durable documents to load when applicable
 
