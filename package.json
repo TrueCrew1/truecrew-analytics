@@ -50,7 +50,8 @@
     "seed-data": "tsx scripts/seed-data.ts",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check": "biome check --write"
+    "check": "biome check --write",
+    "ai:preflight": "node scripts/ai-preflight.mjs"
   },
   "cacheDirectories": [
     ".next/cache"

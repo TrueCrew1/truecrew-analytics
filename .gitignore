@@ -52,3 +52,6 @@ yarn-error.log*
 *.env.*
 
 *.dev.yml
+
+# Generated AI runtime context (local evidence only)
+/.ai/runtime-context.md
