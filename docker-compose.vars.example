@@ -1,0 +1,7 @@
+UMAMI_BIND_ADDRESS=127.0.0.1
+UMAMI_PORT=3000
+POSTGRES_DB=umami
+POSTGRES_USER=umami
+POSTGRES_PASSWORD=replace-with-secret-manager-value
+APP_SECRET=replace-with-secret-manager-value
+TWO_FACTOR_ENCRYPTION_KEY=replace-with-64-character-hex-secret
