@@ -1,37 +1,46 @@
 ---
 services:
   umami:
-    image: ghcr.io/umami-software/umami:latest
+    image: ghcr.io/umami-software/umami:3.3.1@sha256:fa32d116cf20cad52cbc3fad9a63b46e7fa02299d8f967168eb453d49c476b4a
     ports:
-      - "3000:3000"
+      - "${UMAMI_BIND_ADDRESS:-127.0.0.1}:${UMAMI_PORT:-3000}:3000"
     environment:
-      DATABASE_URL: postgresql://umami:umami@db:5432/umami
-      APP_SECRET: replace-me-with-a-random-string
-      # Required for two-factor authentication, generate with: openssl rand -hex 32
-      TWO_FACTOR_ENCRYPTION_KEY: replace-me-with-a-64-character-hex-string
+      DATABASE_URL: postgresql://${POSTGRES_USER:?required}:${POSTGRES_PASSWORD:?required}@db:5432/${POSTGRES_DB:?required}
+      APP_SECRET: ${APP_SECRET:?required}
+      TWO_FACTOR_ENCRYPTION_KEY: ${TWO_FACTOR_ENCRYPTION_KEY:?required}
     depends_on:
       db:
         condition: service_healthy
     init: true
-    restart: always
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "curl http://localhost:3000/api/heartbeat"]
-      interval: 5s
+      test: ["CMD-SHELL", "curl --fail http://127.0.0.1:3000/api/heartbeat || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 6
+      start_period: 20s
+    networks: [frontend, backend]
   db:
-    image: postgres:15-alpine
+    image: postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b
     environment:
-      POSTGRES_DB: umami
-      POSTGRES_USER: umami
-      POSTGRES_PASSWORD: umami
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
     volumes:
       - umami-db-data:/var/lib/postgresql/data
-    restart: always
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 6
+      start_period: 10s
+    networks: [backend]
+networks:
+  frontend:
+  backend:
+    internal: true
 volumes:
   umami-db-data:
